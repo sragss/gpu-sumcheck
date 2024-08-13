@@ -1,0 +1,13 @@
+[package]
+name = "poly-bind-bench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ark-bn254 = "0.4.0"
+ark-ff = "0.4.2"
+ark-std = "0.4.0"
+icicle-cuda-runtime = { git = "https://github.com/ingonyama-zk/icicle.git", tag = "v2.8.0"}
+icicle-core = { git = "https://github.com/ingonyama-zk/icicle.git", tag = "v2.8.0", features = ["arkworks"]}
+icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", tag = "v2.8.0", features = ["arkworks"]}
+rayon = "1.10.0"
