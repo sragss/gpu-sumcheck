@@ -14,6 +14,7 @@ pub struct GPUSumcheck {
     b: GPUPoly,
 }
 
+// #[tracing::instrument(skip_all)]
 fn split(poly: &IngoPoly, len: usize) -> (IngoPoly, IngoPoly) {
     let n = len / 2;
     let low = poly.slice(0, 1, n as u64);
@@ -21,6 +22,7 @@ fn split(poly: &IngoPoly, len: usize) -> (IngoPoly, IngoPoly) {
     (low, high)
 }
 
+// #[tracing::instrument(skip_all)]
 fn sum_poly(poly: &IngoPoly, len: usize) -> Fr {
     if len == 1 {
         let gpu_scalar = poly.get_coeff(0);
@@ -44,6 +46,7 @@ impl CubicSumcheck for GPUSumcheck {
 
     // TODO(sragss): This is likely going to be slow as shit depending on how .even and .odd are implemented.
     // low + r * (high - low)
+    #[tracing::instrument(skip_all)]
     fn eval_cubic_top(&mut self) -> (Fr, Fr, Fr, Fr) {
         assert_eq!(self.eq.len, self.a.len);
         assert_eq!(self.a.len, self.b.len);
@@ -57,7 +60,12 @@ impl CubicSumcheck for GPUSumcheck {
 
         let mut buff = DeviceVec::cuda_malloc(n).unwrap();
         let mut buff_2 = DeviceVec::cuda_malloc(n).unwrap();
+
         let mut prod_3_sum = |a: &mut IngoPoly, b: &mut IngoPoly, c: &mut IngoPoly| -> Fr {
+            let span = tracing::info_span!("prod_3_sum");
+            let _enter = span.enter();
+            let span_mul1 = tracing::info_span!("mul_scalars_1");
+            let _enter_mul1 = span_mul1.enter();
             mul_scalars(
                 a.coeffs_mut_slice(),
                 b.coeffs_mut_slice(),
@@ -65,9 +73,22 @@ impl CubicSumcheck for GPUSumcheck {
                 &cfg,
             )
             .unwrap();
+            drop(_enter_mul1);
+            drop(span_mul1);
+
+            let span_mul2 = tracing::info_span!("mul_scalars_2");
+            let _enter_mul2 = span_mul2.enter();
             mul_scalars(&buff[..], c.coeffs_mut_slice(), &mut buff_2[..], &cfg).unwrap();
+            drop(_enter_mul2);
+            drop(span_mul2);
+
             let poly = IngoPoly::from_coeffs(&buff_2[..], n);
-            sum_poly(&poly, n)
+
+            let span_sum = tracing::info_span!("sum_poly");
+            let _enter_sum = span_sum.enter();
+            let result = sum_poly(&poly, n);
+            drop(_enter_sum);
+            result
         };
 
         let eval_0 = prod_3_sum(&mut eq_low, &mut a_low, &mut b_low);
@@ -92,6 +113,7 @@ impl CubicSumcheck for GPUSumcheck {
         (eval_0, eval_1, eval_2, eval_3)
     }
 
+    #[tracing::instrument(skip_all)]
     fn bind_top(&mut self, r: &Fr) {
         self.eq.bound_poly_var_top(&r);
         self.a.bound_poly_var_top(&r);

@@ -22,7 +22,7 @@ impl<F: PrimeField> DensePolynomial<F> {
         let n = self.Z.len() / 2;
         let (left, right) = self.Z.split_at_mut(n);
 
-        left.iter_mut().zip(right.iter()).for_each(|(a, b)| {
+        left.par_iter_mut().zip(right.par_iter()).for_each(|(a, b)| {
             *a += *r * (*b - *a);
         });
 

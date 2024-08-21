@@ -11,3 +11,6 @@ icicle-cuda-runtime = { git = "https://github.com/ingonyama-zk/icicle.git", tag 
 icicle-core = { git = "https://github.com/ingonyama-zk/icicle.git", tag = "v2.8.0", features = ["arkworks"]}
 icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", tag = "v2.8.0", features = ["arkworks"]}
 rayon = "1.10.0"
+tracing-subscriber = "0.3.18"
+tracing-texray = "0.2.0"
+tracing = "0.1.40"

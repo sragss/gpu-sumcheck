@@ -1,18 +1,5 @@
 use ark_bn254::Fr;
-use ark_std::{One, Zero};
-use icicle_bn254::curve::ScalarField as GPUScalar;
-use icicle_bn254::polynomials::DensePolynomial as IngoPoly;
-use icicle_core::ntt::FieldImpl;
-use icicle_core::polynomials::UnivariatePolynomial;
-use icicle_core::{
-    traits::ArkConvertible,
-    vec_ops::{add_scalars, sub_scalars, VecOpsConfig},
-};
-use icicle_cuda_runtime::memory::{DeviceSlice, DeviceVec, HostSlice};
 use rayon::prelude::*;
-
-use crate::poly::gpu::GPUPoly;
-use crate::poly::plain::DensePolynomial;
 
 pub mod gpu;
 pub mod plain;
@@ -69,7 +56,6 @@ impl CubicSumcheckProof {
             let round_poly = self.round_polys[i];
             assert_eq!(round_poly.0 + round_poly.1, prev_claim, "Round {i}");
             let r = Self::fiat_shamir(round_poly);
-            // println!("v_r {r:?}");
             v_rs.push(r);
             prev_claim = Self::eval_uni(round_poly, &r);
         }
@@ -85,18 +71,24 @@ trait CubicSumcheck {
     fn eval_cubic_top(&mut self) -> (Fr, Fr, Fr, Fr);
     fn bind_top(&mut self, r: &Fr);
 
+    #[tracing::instrument(skip_all)]
     fn sumcheck_top(&mut self, num_rounds: usize) -> CubicSumcheckProof {
         let mut round_polys = Vec::with_capacity(num_rounds);
         let mut rs = Vec::with_capacity(num_rounds);
 
-        for _ in 0..num_rounds {
+        for round in 0..num_rounds {
+            let start_time = std::time::Instant::now();
+            
             let evals = self.eval_cubic_top();
+
             round_polys.push(evals);
-            // println!("round evals: {evals:?}");
             let r = CubicSumcheckProof::fiat_shamir(evals);
             rs.push(r);
-            // println!("p_r {r:?}");
+
             self.bind_top(&r);
+            
+            let duration = start_time.elapsed();
+            println!("Round {}: {:?}", round, duration);
         }
 
         CubicSumcheckProof { round_polys, rs }
@@ -109,7 +101,7 @@ pub mod bench {
     use std::time::Instant;
 
     pub fn main() {
-        let log_size = 4;
+        let log_size = 24;
         let size = 1 << log_size;
         let mut evals = Vec::with_capacity(size);
 
@@ -117,31 +109,34 @@ pub mod bench {
             evals.push(Fr::from(i as u64));
         }
 
+        let claim: Fr = evals.par_iter().map(|eval| eval * eval * eval).sum();
+
         let mut plain = PlainSumcheck::new(evals.clone(), evals.clone(), evals.clone());
         let start_plain = Instant::now();
         let plain_proof = plain.sumcheck_top(log_size);
         let duration_plain = start_plain.elapsed();
-        println!("Time taken for PlainSumcheck: {:?}", duration_plain);
+        println!("PlainSumcheck: {:?}\n\n", duration_plain);
 
         let mut gpu = GPUSumcheck::new(evals.clone(), evals.clone(), evals.clone());
-        let start_gpu = Instant::now();
-        let gpu_proof = gpu.sumcheck_top(log_size);
+        let start_gpu= Instant::now();
+        tracing_texray::examine(tracing::info_span!("gpu_sumcheck")).in_scope(|| {
+            let gpu_proof = gpu.sumcheck_top(log_size);
+
+            assert_eq!(plain_proof, gpu_proof);
+        });
         let duration_gpu = start_gpu.elapsed();
-        println!("Time taken for GPUSumcheck: {:?}", duration_gpu);
+        println!("GPUSumcheck: {:?}", duration_gpu);
 
-        let claim: Fr = evals.par_iter().map(|eval| eval * eval * eval).sum();
 
-        let plain_f = plain_proof.verify(&claim);
-        let gpu_f = gpu_proof.verify(&claim);
-
-        assert_eq!(plain_f, gpu_f);
-        assert_eq!(plain_proof, gpu_proof);
+        plain_proof.verify(&claim);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::poly::gpu::GPUPoly;
+    use crate::poly::plain::DensePolynomial;
     use crate::sumcheck::gpu::GPUSumcheck;
     use crate::sumcheck::plain::PlainSumcheck;
 
