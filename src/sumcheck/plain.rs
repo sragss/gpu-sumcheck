@@ -48,7 +48,7 @@ impl CubicSumcheck for PlainSumcheck {
             let b_3 = b_2 + b_m;
             let eval_3 = eq_3 * a_3 * b_3;
 
-            println!("index {i}: eval_0: {eval_0:?}");
+            // println!("index {i}: eval_0: {eval_0:?}");
 
             (eval_0, eval_1, eval_2, eval_3)
         }).reduce(|| (Fr::zero(), Fr::zero(), Fr::zero(), Fr::zero()), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2, a.3 + b.3));

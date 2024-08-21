@@ -9,7 +9,7 @@ use icicle_core::ntt::FieldImpl;
 
 pub struct GPUPoly {
     pub poly: IngoPoly,
-    len: usize,
+    pub len: usize,
 }
 
 impl GPUPoly {

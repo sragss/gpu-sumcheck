@@ -18,6 +18,7 @@ pub mod plain;
 
 
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct CubicSumcheckProof {
     round_polys: Vec<(Fr, Fr, Fr, Fr)>,
     rs: Vec<Fr>
@@ -57,7 +58,7 @@ impl CubicSumcheckProof {
             let round_poly = self.round_polys[i];
             assert_eq!(round_poly.0 + round_poly.1, prev_claim, "Round {i}");
             let r = Self::fiat_shamir(round_poly);
-            println!("v_r {r:?}");
+            // println!("v_r {r:?}");
             v_rs.push(r);
             prev_claim = Self::eval_uni(round_poly, &r);
         }
@@ -82,10 +83,10 @@ trait CubicSumcheck {
         for _ in 0..num_rounds {
             let evals = self.eval_cubic_top();
             round_polys.push(evals);
-            println!("round evals: {evals:?}");
+            // println!("round evals: {evals:?}");
             let r = CubicSumcheckProof::fiat_shamir(evals);
             rs.push(r);
-            println!("p_r {r:?}");
+            // println!("p_r {r:?}");
             self.bind_top(&r);
         }
 
@@ -100,32 +101,48 @@ trait CubicSumcheck {
 
 pub mod bench {
     use super::*;
+    use crate::sumcheck::{plain::PlainSumcheck, gpu::GPUSumcheck};
 
     pub fn main() {
-        let size = 1 << 24;
+        let log_size = 24;
+        let size = 1 << log_size;
         let mut evals = Vec::with_capacity(size);
 
         for i in 0..size {
             evals.push(Fr::from(i as u64));
         }
 
+        // let mut plain = DensePolynomial::new(evals.clone());
+        // let r = Fr::from(20);
+
+        // let start_plain = Instant::now();
+        // plain.bound_poly_var_top_par(&r);
+        // let duration_plain = start_plain.elapsed();
+
+        // let mut gpu = GPUPoly::new(evals);
+        
+        // let start_gpu = Instant::now();
+        // gpu.bound_poly_var_top(&r);
+        // let duration_gpu = start_gpu.elapsed();
+
+        // println!("Time taken for plain bound_poly_var_top: {:?}", duration_plain);
+        // println!("Time taken for GPU bound_poly_var_top: {:?}", duration_gpu);
+
         use std::time::Instant;
 
-        let mut plain = DensePolynomial::new(evals.clone());
-        let r = Fr::from(20);
-
+        let mut plain = PlainSumcheck::new(evals.clone(), evals.clone(), evals.clone());
         let start_plain = Instant::now();
-        plain.bound_poly_var_top_par(&r);
+        let plain_proof = plain.sumcheck_top(log_size);
         let duration_plain = start_plain.elapsed();
+        println!("Time taken for PlainSumcheck: {:?}", duration_plain);
 
-        let mut gpu = GPUPoly::new(evals);
-        
+        let mut gpu = GPUSumcheck::new(evals.clone(), evals.clone(), evals.clone());
         let start_gpu = Instant::now();
-        gpu.bound_poly_var_top(&r);
+        let gpu_proof = gpu.sumcheck_top(log_size);
         let duration_gpu = start_gpu.elapsed();
+        println!("Time taken for GPUSumcheck: {:?}", duration_gpu);
 
-        println!("Time taken for plain bound_poly_var_top: {:?}", duration_plain);
-        println!("Time taken for GPU bound_poly_var_top: {:?}", duration_gpu);
+        assert_eq!(plain_proof, gpu_proof);
 
     }
 }
@@ -136,9 +153,10 @@ pub mod bench {
 mod tests {
     use super::*;
     use crate::sumcheck::plain::PlainSumcheck;
+    use crate::sumcheck::gpu::GPUSumcheck;
 
     #[test]
-    fn plain() {
+    fn plain_sumcheck() {
         let eq = vec![Fr::from(12), Fr::from(13), Fr::from(14), Fr::from(15)];
         let a = eq.clone();
         let b = eq.clone();
@@ -147,6 +165,19 @@ mod tests {
 
         let mut plain = PlainSumcheck::new(eq, a, b);
         let proof = plain.sumcheck_top(2);
+        proof.verify(&claim);
+    }
+
+    #[test]
+    fn gpu_sumcheck() {
+        let eq = vec![Fr::from(12), Fr::from(13), Fr::from(14), Fr::from(15)];
+        let a = eq.clone();
+        let b = eq.clone();
+
+        let claim: Fr = (0..eq.len()).into_iter().map(|i| eq[i] * a[i] * b[i]).sum();
+
+        let mut sumcheck = GPUSumcheck::new(eq, a, b);
+        let proof = sumcheck.sumcheck_top(2);
         proof.verify(&claim);
     }
 
