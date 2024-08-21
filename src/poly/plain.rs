@@ -4,7 +4,7 @@ use rayon::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DensePolynomial<F: PrimeField> {
-    pub Z: Vec<F>
+    pub Z: Vec<F>,
 }
 
 impl<F: PrimeField> DensePolynomial<F> {
@@ -15,9 +15,7 @@ impl<F: PrimeField> DensePolynomial<F> {
             z.len()
         );
 
-        DensePolynomial {
-            Z: z
-        }
+        DensePolynomial { Z: z }
     }
 
     pub fn bound_poly_var_top(&mut self, r: &F) {
@@ -51,7 +49,6 @@ impl<F: PrimeField> DensePolynomial<F> {
         }
         self.Z.truncate(n);
     }
-
 }
 
 impl<F: PrimeField> std::ops::Index<usize> for DensePolynomial<F> {

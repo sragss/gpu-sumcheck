@@ -1,27 +1,26 @@
-
-
-use icicle_bn254::polynomials::DensePolynomial as IngoPoly;
-use icicle_bn254::curve::ScalarField as GPUScalar;
 use ark_bn254::Fr;
-use icicle_core::{traits::ArkConvertible, vec_ops::{add_scalars, sub_scalars, VecOpsConfig}};
+use ark_std::{One, Zero};
+use icicle_bn254::curve::ScalarField as GPUScalar;
+use icicle_bn254::polynomials::DensePolynomial as IngoPoly;
+use icicle_core::ntt::FieldImpl;
+use icicle_core::polynomials::UnivariatePolynomial;
+use icicle_core::{
+    traits::ArkConvertible,
+    vec_ops::{add_scalars, sub_scalars, VecOpsConfig},
+};
 use icicle_cuda_runtime::memory::{DeviceSlice, DeviceVec, HostSlice};
 use rayon::prelude::*;
-use ark_std::{Zero, One};
-use icicle_core::polynomials::UnivariatePolynomial;
-use icicle_core::ntt::FieldImpl;
 
-use crate::poly::plain::DensePolynomial;
 use crate::poly::gpu::GPUPoly;
+use crate::poly::plain::DensePolynomial;
 
 pub mod gpu;
 pub mod plain;
 
-
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct CubicSumcheckProof {
     round_polys: Vec<(Fr, Fr, Fr, Fr)>,
-    rs: Vec<Fr>
+    rs: Vec<Fr>,
 }
 
 impl CubicSumcheckProof {
@@ -31,16 +30,28 @@ impl CubicSumcheckProof {
 
     /// Evaluates the univariate polynomial as specified by its evaluations over [0, ... 3]
     /// at a new point 'r' using Lagrange interpolation.
-    /// 
+    ///
     /// evals: f(0), f(1), f(2), f(3)
     /// r: f(r)
     fn eval_uni(evals: (Fr, Fr, Fr, Fr), r: &Fr) -> Fr {
         let (f0, f1, f2, f3) = evals;
 
-        let l0 = (*r - Fr::from(1)) * (*r - Fr::from(2)) * (*r - Fr::from(3)) / ((Fr::from(0) - Fr::from(1)) * (Fr::from(0) - Fr::from(2)) * (Fr::from(0) - Fr::from(3)));
-        let l1 = (*r - Fr::from(0)) * (*r - Fr::from(2)) * (*r - Fr::from(3)) / ((Fr::from(1) - Fr::from(0)) * (Fr::from(1) - Fr::from(2)) * (Fr::from(1) - Fr::from(3)));
-        let l2 = (*r - Fr::from(0)) * (*r - Fr::from(1)) * (*r - Fr::from(3)) / ((Fr::from(2) - Fr::from(0)) * (Fr::from(2) - Fr::from(1)) * (Fr::from(2) - Fr::from(3)));
-        let l3 = (*r - Fr::from(0)) * (*r - Fr::from(1)) * (*r - Fr::from(2)) / ((Fr::from(3) - Fr::from(0)) * (Fr::from(3) - Fr::from(1)) * (Fr::from(3) - Fr::from(2)));
+        let l0 = (*r - Fr::from(1)) * (*r - Fr::from(2)) * (*r - Fr::from(3))
+            / ((Fr::from(0) - Fr::from(1))
+                * (Fr::from(0) - Fr::from(2))
+                * (Fr::from(0) - Fr::from(3)));
+        let l1 = (*r - Fr::from(0)) * (*r - Fr::from(2)) * (*r - Fr::from(3))
+            / ((Fr::from(1) - Fr::from(0))
+                * (Fr::from(1) - Fr::from(2))
+                * (Fr::from(1) - Fr::from(3)));
+        let l2 = (*r - Fr::from(0)) * (*r - Fr::from(1)) * (*r - Fr::from(3))
+            / ((Fr::from(2) - Fr::from(0))
+                * (Fr::from(2) - Fr::from(1))
+                * (Fr::from(2) - Fr::from(3)));
+        let l3 = (*r - Fr::from(0)) * (*r - Fr::from(1)) * (*r - Fr::from(2))
+            / ((Fr::from(3) - Fr::from(0))
+                * (Fr::from(3) - Fr::from(1))
+                * (Fr::from(3) - Fr::from(2)));
 
         f0 * l0 + f1 * l1 + f2 * l2 + f3 * l3
     }
@@ -69,12 +80,10 @@ impl CubicSumcheckProof {
     }
 }
 
-
 trait CubicSumcheck {
     fn new(eq: Vec<Fr>, a: Vec<Fr>, b: Vec<Fr>) -> Self;
     fn eval_cubic_top(&mut self) -> (Fr, Fr, Fr, Fr);
     fn bind_top(&mut self, r: &Fr);
-
 
     fn sumcheck_top(&mut self, num_rounds: usize) -> CubicSumcheckProof {
         let mut round_polys = Vec::with_capacity(num_rounds);
@@ -90,45 +99,23 @@ trait CubicSumcheck {
             self.bind_top(&r);
         }
 
-        CubicSumcheckProof {
-            round_polys,
-            rs
-        }
+        CubicSumcheckProof { round_polys, rs }
     }
 }
 
-
-
 pub mod bench {
     use super::*;
-    use crate::sumcheck::{plain::PlainSumcheck, gpu::GPUSumcheck};
+    use crate::sumcheck::{gpu::GPUSumcheck, plain::PlainSumcheck};
+    use std::time::Instant;
 
     pub fn main() {
-        let log_size = 24;
+        let log_size = 4;
         let size = 1 << log_size;
         let mut evals = Vec::with_capacity(size);
 
         for i in 0..size {
             evals.push(Fr::from(i as u64));
         }
-
-        // let mut plain = DensePolynomial::new(evals.clone());
-        // let r = Fr::from(20);
-
-        // let start_plain = Instant::now();
-        // plain.bound_poly_var_top_par(&r);
-        // let duration_plain = start_plain.elapsed();
-
-        // let mut gpu = GPUPoly::new(evals);
-        
-        // let start_gpu = Instant::now();
-        // gpu.bound_poly_var_top(&r);
-        // let duration_gpu = start_gpu.elapsed();
-
-        // println!("Time taken for plain bound_poly_var_top: {:?}", duration_plain);
-        // println!("Time taken for GPU bound_poly_var_top: {:?}", duration_gpu);
-
-        use std::time::Instant;
 
         let mut plain = PlainSumcheck::new(evals.clone(), evals.clone(), evals.clone());
         let start_plain = Instant::now();
@@ -142,18 +129,21 @@ pub mod bench {
         let duration_gpu = start_gpu.elapsed();
         println!("Time taken for GPUSumcheck: {:?}", duration_gpu);
 
-        assert_eq!(plain_proof, gpu_proof);
+        let claim: Fr = evals.par_iter().map(|eval| eval * eval * eval).sum();
 
+        let plain_f = plain_proof.verify(&claim);
+        let gpu_f = gpu_proof.verify(&claim);
+
+        assert_eq!(plain_f, gpu_f);
+        assert_eq!(plain_proof, gpu_proof);
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sumcheck::plain::PlainSumcheck;
     use crate::sumcheck::gpu::GPUSumcheck;
+    use crate::sumcheck::plain::PlainSumcheck;
 
     #[test]
     fn plain_sumcheck() {
@@ -183,7 +173,16 @@ mod tests {
 
     #[test]
     fn gpu_bind_bot() {
-        let evals = vec![Fr::from(11), Fr::from(12), Fr::from(13), Fr::from(14), Fr::from(15), Fr::from(16), Fr::from(17), Fr::from(18)];
+        let evals = vec![
+            Fr::from(11),
+            Fr::from(12),
+            Fr::from(13),
+            Fr::from(14),
+            Fr::from(15),
+            Fr::from(16),
+            Fr::from(17),
+            Fr::from(18),
+        ];
         let mut poly = DensePolynomial::new(evals.clone());
         let mut gpu_poly = GPUPoly::new(evals);
 
@@ -196,7 +195,16 @@ mod tests {
 
     #[test]
     fn gpu_bind_top() {
-        let evals = vec![Fr::from(11), Fr::from(12), Fr::from(13), Fr::from(14), Fr::from(15), Fr::from(16), Fr::from(17), Fr::from(18)];
+        let evals = vec![
+            Fr::from(11),
+            Fr::from(12),
+            Fr::from(13),
+            Fr::from(14),
+            Fr::from(15),
+            Fr::from(16),
+            Fr::from(17),
+            Fr::from(18),
+        ];
         let mut poly = DensePolynomial::new(evals.clone());
         let mut gpu_poly = GPUPoly::new(evals);
 
@@ -205,5 +213,26 @@ mod tests {
         poly.bound_poly_var_top(&r);
         gpu_poly.bound_poly_var_top(&r);
         assert_eq!(poly, gpu_poly.to_ark());
+    }
+
+    #[test]
+    fn eval_cubic_top_parity() {
+        let evals = vec![
+            Fr::from(11),
+            Fr::from(12),
+            Fr::from(13),
+            Fr::from(14),
+            Fr::from(15),
+            Fr::from(16),
+            Fr::from(17),
+            Fr::from(18),
+        ];
+        let mut plain_sumcheck = PlainSumcheck::new(evals.clone(), evals.clone(), evals.clone());
+        let mut gpu_sumcheck = GPUSumcheck::new(evals.clone(), evals.clone(), evals.clone());
+
+        let plain_res = plain_sumcheck.eval_cubic_top();
+        let gpu_res = gpu_sumcheck.eval_cubic_top();
+
+        assert_eq!(plain_res, gpu_res);
     }
 }

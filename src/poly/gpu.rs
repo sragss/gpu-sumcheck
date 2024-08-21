@@ -1,11 +1,11 @@
-use icicle_bn254::polynomials::DensePolynomial as IngoPoly;
-use icicle_bn254::curve::ScalarField as GPUScalar;
-use ark_bn254::Fr;
-use icicle_cuda_runtime::memory::HostSlice;
-use icicle_core::traits::ArkConvertible;
-use icicle_core::polynomials::UnivariatePolynomial;
 use crate::poly::plain::DensePolynomial;
+use ark_bn254::Fr;
+use icicle_bn254::curve::ScalarField as GPUScalar;
+use icicle_bn254::polynomials::DensePolynomial as IngoPoly;
 use icicle_core::ntt::FieldImpl;
+use icicle_core::polynomials::UnivariatePolynomial;
+use icicle_core::traits::ArkConvertible;
+use icicle_cuda_runtime::memory::HostSlice;
 
 pub struct GPUPoly {
     pub poly: IngoPoly,
@@ -15,7 +15,10 @@ pub struct GPUPoly {
 impl GPUPoly {
     pub fn new(z: Vec<Fr>) -> Self {
         IngoPoly::init_cuda_backend();
-        let z: Vec<_> = z.into_iter().map(|item| GPUScalar::from_ark(item)).collect();
+        let z: Vec<_> = z
+            .into_iter()
+            .map(|item| GPUScalar::from_ark(item))
+            .collect();
         let slice = HostSlice::from_slice(&z);
         let poly = IngoPoly::from_coeffs(slice, z.len());
         Self { poly, len: z.len() }
@@ -38,7 +41,7 @@ impl GPUPoly {
 
         let low = self.poly.slice(0, 1, self.len as u64);
         let high = self.poly.slice(self.len as u64, 1, self.len as u64);
-        let mut m_poly = &high- &low;
+        let mut m_poly = &high - &low;
         let r_gpu = GPUScalar::from_ark(r.to_owned());
         m_poly = &r_gpu * &m_poly;
         let result = &low + &m_poly;

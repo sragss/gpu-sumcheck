@@ -1,19 +1,17 @@
-use ark_bn254::Fr;
-use icicle_core::traits::ArkConvertible;
 use crate::poly::gpu::GPUPoly;
 use crate::sumcheck::CubicSumcheck;
+use ark_bn254::Fr;
 use icicle_bn254::polynomials::DensePolynomial as IngoPoly;
 use icicle_core::polynomials::UnivariatePolynomial;
-use icicle_cuda_runtime::memory::DeviceVec;
-use icicle_core::vec_ops::{mul_scalars};
+use icicle_core::traits::ArkConvertible;
+use icicle_core::vec_ops::mul_scalars;
 use icicle_core::vec_ops::VecOpsConfig;
-
-
+use icicle_cuda_runtime::memory::DeviceVec;
 
 pub struct GPUSumcheck {
     eq: GPUPoly,
     a: GPUPoly,
-    b: GPUPoly
+    b: GPUPoly,
 }
 
 fn split(poly: &IngoPoly, len: usize) -> (IngoPoly, IngoPoly) {
@@ -37,7 +35,6 @@ fn sum_poly(poly: &IngoPoly, len: usize) -> Fr {
 
 impl CubicSumcheck for GPUSumcheck {
     fn new(eq: Vec<Fr>, a: Vec<Fr>, b: Vec<Fr>) -> Self {
-
         let eq = GPUPoly::new(eq);
         let a = GPUPoly::new(a);
         let b = GPUPoly::new(b);
@@ -52,23 +49,26 @@ impl CubicSumcheck for GPUSumcheck {
         assert_eq!(self.a.len, self.b.len);
         let n = self.eq.len / 2;
 
-
         let (mut eq_low, mut eq_high) = split(&self.eq.poly, self.eq.len);
         let (mut a_low, mut a_high) = split(&self.a.poly, self.a.len);
         let (mut b_low, mut b_high) = split(&self.b.poly, self.b.len);
-
 
         let cfg = VecOpsConfig::default();
 
         let mut buff = DeviceVec::cuda_malloc(n).unwrap();
         let mut buff_2 = DeviceVec::cuda_malloc(n).unwrap();
         let mut prod_3_sum = |a: &mut IngoPoly, b: &mut IngoPoly, c: &mut IngoPoly| -> Fr {
-            mul_scalars(a.coeffs_mut_slice(), b.coeffs_mut_slice(), &mut buff[..], &cfg).unwrap();
+            mul_scalars(
+                a.coeffs_mut_slice(),
+                b.coeffs_mut_slice(),
+                &mut buff[..],
+                &cfg,
+            )
+            .unwrap();
             mul_scalars(&buff[..], c.coeffs_mut_slice(), &mut buff_2[..], &cfg).unwrap();
             let poly = IngoPoly::from_coeffs(&buff_2[..], n);
             sum_poly(&poly, n)
         };
-
 
         let eval_0 = prod_3_sum(&mut eq_low, &mut a_low, &mut b_low);
         let eval_1 = prod_3_sum(&mut eq_high, &mut a_high, &mut b_high);
@@ -97,9 +97,7 @@ impl CubicSumcheck for GPUSumcheck {
         self.a.bound_poly_var_top(&r);
         self.b.bound_poly_var_top(&r);
     }
-
 }
-
 
 #[cfg(test)]
 mod tests {
