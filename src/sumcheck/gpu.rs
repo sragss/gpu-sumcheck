@@ -5,7 +5,7 @@ use icicle_bn254::polynomials::DensePolynomial as IngoPoly;
 use icicle_bn254::curve::ScalarField as GPUScalar;
 use icicle_core::polynomials::UnivariatePolynomial;
 use icicle_core::traits::ArkConvertible;
-use icicle_core::vec_ops::{eval_cubic_scalars, mul_scalars, sub_scalars, sum_scalars};
+use icicle_core::vec_ops::{bind_triple_scalars, eval_cubic_scalars, mul_scalars, sub_scalars, sum_scalars};
 use icicle_core::vec_ops::VecOpsConfig;
 use icicle_cuda_runtime::memory::DeviceVec;
 use icicle_core::ntt::FieldImpl;
@@ -54,16 +54,35 @@ impl CubicSumcheck for GPUSumcheck {
         let n = self.eq.len / 2;
 
         let mut result = vec![GPUScalar::zero(); 4];
-        eval_cubic_scalars(self.eq.poly.coeffs_mut_slice(), self.a.poly.coeffs_mut_slice(), self.b.poly.coeffs_mut_slice(), n, &mut result).unwrap();
+        
+        let eq_coeffs = self.eq.poly.coeffs_mut_slice();
+        let a_coeffs = self.a.poly.coeffs_mut_slice();
+        let b_coeffs = self.b.poly.coeffs_mut_slice();
+        
+        eval_cubic_scalars(eq_coeffs, a_coeffs, b_coeffs, n, &mut result).unwrap();
 
         (result[0].to_ark(), result[1].to_ark(), result[2].to_ark(), result[3].to_ark())
     }
 
     #[tracing::instrument(skip_all)]
     fn bind_top(&mut self, r: &Fr) {
-        self.eq.bound_poly_var_top(&r);
-        self.a.bound_poly_var_top(&r);
-        self.b.bound_poly_var_top(&r);
+        // self.eq.bound_poly_var_top(&r);
+        // self.a.bound_poly_var_top(&r);
+        // self.b.bound_poly_var_top(&r);
+
+        // Note(sragss): Below is identical speeds.
+        let len = self.eq.len / 2;
+        self.eq.len = len;
+        self.a.len = len;
+        self.b.len = len;
+
+        bind_triple_scalars(
+            &mut self.eq.poly.coeffs_mut_slice()[..], 
+            &mut self.a.poly.coeffs_mut_slice()[..], 
+            &mut self.b.poly.coeffs_mut_slice()[..], 
+            GPUScalar::from_ark(r.to_owned()), 
+            len
+        ).unwrap();
     }
 }
 

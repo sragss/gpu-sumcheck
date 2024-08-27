@@ -101,7 +101,7 @@ pub mod bench {
     use std::time::Instant;
 
     pub fn main() {
-        let log_size = 27;
+        let log_size = 26;
         let size = 1 << log_size;
         let mut evals = Vec::with_capacity(size);
 

@@ -45,6 +45,7 @@ impl GPUPoly {
 
 
         let coeffs = self.poly.coeffs_mut_slice();
+
         bind_scalars(coeffs, GPUScalar::from_ark(r.to_owned()), self.len).unwrap();
     }
 
