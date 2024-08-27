@@ -14,3 +14,8 @@ rayon = "1.10.0"
 tracing-subscriber = "0.3.18"
 tracing-texray = "0.2.0"
 tracing = "0.1.40"
+
+[patch."https://github.com/ingonyama-zk/icicle.git"]
+icicle-cuda-runtime = { path = "/root/icicle/wrappers/rust/icicle-cuda-runtime" }
+icicle-core = { path = "/root/icicle/wrappers/rust/icicle-core" }
+icicle-bn254 = { path = "/root/icicle/wrappers/rust/icicle-curves/icicle-bn254" }
