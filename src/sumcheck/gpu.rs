@@ -5,7 +5,7 @@ use icicle_bn254::polynomials::DensePolynomial as IngoPoly;
 use icicle_bn254::curve::ScalarField as GPUScalar;
 use icicle_core::polynomials::UnivariatePolynomial;
 use icicle_core::traits::ArkConvertible;
-use icicle_core::vec_ops::{mul_scalars, sub_scalars, sum_scalars};
+use icicle_core::vec_ops::{eval_cubic_scalars, mul_scalars, sub_scalars, sum_scalars};
 use icicle_core::vec_ops::VecOpsConfig;
 use icicle_cuda_runtime::memory::DeviceVec;
 use icicle_core::ntt::FieldImpl;
@@ -46,94 +46,17 @@ impl CubicSumcheck for GPUSumcheck {
         Self { eq, a, b }
     }
 
-    // TODO(sragss): This is likely going to be slow as shit depending on how .even and .odd are implemented.
-    // low + r * (high - low)
+
     #[tracing::instrument(skip_all)]
     fn eval_cubic_top(&mut self) -> (Fr, Fr, Fr, Fr) {
         assert_eq!(self.eq.len, self.a.len);
         assert_eq!(self.a.len, self.b.len);
         let n = self.eq.len / 2;
 
-        let (mut eq_low, mut eq_high) = split(&self.eq.poly, self.eq.len);
-        let (mut a_low, mut a_high) = split(&self.a.poly, self.a.len);
-        let (mut b_low, mut b_high) = split(&self.b.poly, self.b.len);
+        let mut result = vec![GPUScalar::zero(); 4];
+        eval_cubic_scalars(self.eq.poly.coeffs_mut_slice(), self.a.poly.coeffs_mut_slice(), self.b.poly.coeffs_mut_slice(), n, &mut result).unwrap();
 
-        let mut cfg = VecOpsConfig::default();
-        cfg.is_a_on_device = true;
-        cfg.is_b_on_device = true;
-        cfg.is_result_on_device = true;
-        cfg.is_async = true;
-
-        let buff_alloc_span = tracing::info_span!("buff_alloc");
-        let buff_alloc_guard = buff_alloc_span.enter();
-        let mut buff = DeviceVec::cuda_malloc(n).unwrap();
-        let mut buff_2 = DeviceVec::cuda_malloc(n).unwrap();
-        let mut eq_buff = DeviceVec::cuda_malloc(n).unwrap();
-        let mut a_buff = DeviceVec::cuda_malloc(n).unwrap();
-        let mut b_buff = DeviceVec::cuda_malloc(n).unwrap();
-        drop(buff_alloc_guard);
-        drop(buff_alloc_span);
-
-        let mut prod_3_sum = |a: &mut IngoPoly, b: &mut IngoPoly, c: &mut IngoPoly| -> Fr {
-            let span = tracing::info_span!("prod_3_sum");
-            let _enter = span.enter();
-
-            let span_slice = tracing::info_span!("coeffs_mut_slice");
-            let _span_slice_enter = span_slice.enter();
-            let a_slice = a.coeffs_mut_slice();
-            let b_slice = b.coeffs_mut_slice();
-            drop(_span_slice_enter);
-            drop(span_slice);
-
-            let span_mul1 = tracing::info_span!("mul_scalars_1");
-            let _enter_mul1 = span_mul1.enter();
-            mul_scalars(
-                a_slice,
-                b_slice,
-                &mut buff[..],
-                &cfg,
-            )
-            .unwrap();
-            drop(_enter_mul1);
-            drop(span_mul1);
-
-            let span_mul2 = tracing::info_span!("mul_scalars_2");
-            let _enter_mul2 = span_mul2.enter();
-            mul_scalars(&buff[..], c.coeffs_mut_slice(), &mut buff_2[..], &cfg).unwrap();
-            drop(_enter_mul2);
-            drop(span_mul2);
-
-            // let poly = IngoPoly::from_coeffs(&buff_2[..], n);
-
-            let span_sum = tracing::info_span!("sum_scalars");
-            let _enter_sum = span_sum.enter();
-            let mut result = GPUScalar::zero();
-            sum_scalars(&buff_2[..], &mut result).unwrap();
-            // let result = sum_poly(&poly, n);
-            drop(_enter_sum);
-            result.to_ark()
-        };
-
-        let eval_0 = prod_3_sum(&mut eq_low, &mut a_low, &mut b_low);
-        let eval_1 = prod_3_sum(&mut eq_high, &mut a_high, &mut b_high);
-
-        let eq_m = &eq_high - &eq_low;
-        let a_m = &a_high - &a_low;
-        let b_m = &b_high - &b_low;
-
-        let mut eq_2 = &eq_high + &eq_m;
-        let mut a_2 = &a_high + &a_m;
-        let mut b_2 = &b_high + &b_m;
-
-        let eval_2 = prod_3_sum(&mut eq_2, &mut a_2, &mut b_2);
-
-        let mut eq_3 = &eq_2 + &eq_m;
-        let mut a_3 = &a_2 + &a_m;
-        let mut b_3 = &b_2 + &b_m;
-
-        let eval_3 = prod_3_sum(&mut eq_3, &mut a_3, &mut b_3);
-
-        (eval_0, eval_1, eval_2, eval_3)
+        (result[0].to_ark(), result[1].to_ark(), result[2].to_ark(), result[3].to_ark())
     }
 
     #[tracing::instrument(skip_all)]
