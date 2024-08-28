@@ -19,6 +19,7 @@ impl CubicSumcheck for SIMDSumcheck {
         Self { eq, a, b }
     }
 
+    #[tracing::instrument(skip_all)]
     fn eval_cubic_top(&mut self) -> (Fr, Fr, Fr, Fr) {
         let len = self.eq.Z.len();
         assert_eq!(self.a.Z.len(), len);
@@ -85,6 +86,7 @@ impl CubicSumcheck for SIMDSumcheck {
         (eval_0, eval_1, eval_2, eval_3)
     }
 
+    #[tracing::instrument(skip_all)]
     fn bind_top(&mut self, r: &Fr) {
         self.eq.bound_poly_var_top(r);
         self.a.bound_poly_var_top(r);
