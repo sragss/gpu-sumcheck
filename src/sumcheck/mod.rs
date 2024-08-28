@@ -3,6 +3,7 @@ use rayon::prelude::*;
 
 #[cfg(feature = "gpu")]
 pub mod gpu;
+pub mod simd;
 pub mod plain;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,6 +98,8 @@ trait CubicSumcheck {
 }
 
 pub mod bench {
+    use bench::simd::SIMDSumcheck;
+
     use super::*;
     #[cfg(feature = "gpu")]
     use crate::sumcheck::gpu::GPUSumcheck;
@@ -119,6 +122,17 @@ pub mod bench {
         let plain_proof = plain.sumcheck_top(log_size);
         let duration_plain = start_plain.elapsed();
         println!("PlainSumcheck: {:?}\n\n", duration_plain);
+
+        // SIMD
+        let mut simd = SIMDSumcheck::new(evals.clone(), evals.clone(), evals.clone());
+        let start_simd = Instant::now();
+        tracing_texray::examine(tracing::info_span!("simd_sumcheck")).in_scope(|| {
+            let simd_proof = simd.sumcheck_top(log_size);
+
+            assert_eq!(plain_proof, simd_proof);
+        });
+        let duration_simd = start_simd.elapsed();
+        println!("SIMDSumcheck: {:?}", duration_simd);
 
         #[cfg(feature = "gpu")]
         {
