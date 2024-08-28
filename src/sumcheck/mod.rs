@@ -1,6 +1,7 @@
 use ark_bn254::Fr;
 use rayon::prelude::*;
 
+#[cfg(feature = "gpu")]
 pub mod gpu;
 pub mod plain;
 
@@ -97,7 +98,9 @@ trait CubicSumcheck {
 
 pub mod bench {
     use super::*;
-    use crate::sumcheck::{gpu::GPUSumcheck, plain::PlainSumcheck};
+    #[cfg(feature = "gpu")]
+    use crate::sumcheck::gpu::GPUSumcheck;
+    use crate::sumcheck::plain::PlainSumcheck;
     use std::time::Instant;
 
     pub fn main() {
@@ -117,16 +120,18 @@ pub mod bench {
         let duration_plain = start_plain.elapsed();
         println!("PlainSumcheck: {:?}\n\n", duration_plain);
 
-        let mut gpu = GPUSumcheck::new(evals.clone(), evals.clone(), evals.clone());
-        let start_gpu= Instant::now();
-        tracing_texray::examine(tracing::info_span!("gpu_sumcheck")).in_scope(|| {
-            let gpu_proof = gpu.sumcheck_top(log_size);
+        #[cfg(feature = "gpu")]
+        {
+            let mut gpu = GPUSumcheck::new(evals.clone(), evals.clone(), evals.clone());
+            let start_gpu= Instant::now();
+            tracing_texray::examine(tracing::info_span!("gpu_sumcheck")).in_scope(|| {
+                let gpu_proof = gpu.sumcheck_top(log_size);
 
-            assert_eq!(plain_proof, gpu_proof);
-        });
-        let duration_gpu = start_gpu.elapsed();
-        println!("GPUSumcheck: {:?}", duration_gpu);
-
+                assert_eq!(plain_proof, gpu_proof);
+            });
+            let duration_gpu = start_gpu.elapsed();
+            println!("GPUSumcheck: {:?}", duration_gpu);
+        }
 
         plain_proof.verify(&claim);
     }
@@ -135,8 +140,10 @@ pub mod bench {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "gpu")]
     use crate::poly::gpu::GPUPoly;
     use crate::poly::plain::DensePolynomial;
+    #[cfg(feature = "gpu")]
     use crate::sumcheck::gpu::GPUSumcheck;
     use crate::sumcheck::plain::PlainSumcheck;
 
@@ -153,6 +160,7 @@ mod tests {
         proof.verify(&claim);
     }
 
+    #[cfg(feature = "gpu")]
     #[test]
     fn gpu_sumcheck() {
         let eq = vec![Fr::from(12), Fr::from(13), Fr::from(14), Fr::from(15)];
@@ -166,6 +174,7 @@ mod tests {
         proof.verify(&claim);
     }
 
+    #[cfg(feature = "gpu")]
     #[test]
     fn gpu_bind_bot() {
         let evals = vec![
@@ -188,6 +197,7 @@ mod tests {
         assert_eq!(poly, gpu_poly.to_ark());
     }
 
+    #[cfg(feature = "gpu")]
     #[test]
     fn gpu_bind_top() {
         let evals = vec![
@@ -210,6 +220,7 @@ mod tests {
         assert_eq!(poly, gpu_poly.to_ark());
     }
 
+    #[cfg(feature = "gpu")]
     #[test]
     fn eval_cubic_top_parity() {
         let evals = vec![
