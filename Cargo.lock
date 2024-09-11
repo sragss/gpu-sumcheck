@@ -1145,7 +1145,7 @@ checksum = "830b7e5d4d90034032940e4ace0d9a9a057e7a45cd94e6c007832e39edb82f6d"
 [[package]]
 name = "vectorized-fields"
 version = "0.1.0"
-source = "git+https://github.com/sragss/vectorized-fields.git?branch=inplace#17271c38b46d35a0e35f48dbf44cc4f22eb3f11f"
+source = "git+https://github.com/a16z/vectorized-fields.git#49fc13c2e4b0a4f3e38b692669fc7320880fd8dd"
 dependencies = [
  "ark-bn254",
  "ark-ff",
