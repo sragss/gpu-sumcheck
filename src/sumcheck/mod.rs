@@ -3,8 +3,8 @@ use rayon::prelude::*;
 
 #[cfg(feature = "gpu")]
 pub mod gpu;
-pub mod simd;
 pub mod plain;
+pub mod simd;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct CubicSumcheckProof {
@@ -80,7 +80,7 @@ trait CubicSumcheck {
 
         for round in 0..num_rounds {
             let start_time = std::time::Instant::now();
-            
+
             let evals = self.eval_cubic_top();
 
             round_polys.push(evals);
@@ -88,7 +88,7 @@ trait CubicSumcheck {
             rs.push(r);
 
             self.bind_top(&r);
-            
+
             let duration = start_time.elapsed();
             println!("Round {}: {:?}", round, duration);
         }
@@ -107,7 +107,7 @@ pub mod bench {
     use std::time::Instant;
 
     pub fn main() {
-        let log_size = 24;
+        let log_size = 28;
         let size = 1 << log_size;
         let mut evals = Vec::with_capacity(size);
 
@@ -137,7 +137,7 @@ pub mod bench {
         #[cfg(feature = "gpu")]
         {
             let mut gpu = GPUSumcheck::new(evals.clone(), evals.clone(), evals.clone());
-            let start_gpu= Instant::now();
+            let start_gpu = Instant::now();
             tracing_texray::examine(tracing::info_span!("gpu_sumcheck")).in_scope(|| {
                 let gpu_proof = gpu.sumcheck_top(log_size);
 
