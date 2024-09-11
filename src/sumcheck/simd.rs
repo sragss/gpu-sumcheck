@@ -17,7 +17,8 @@ impl SIMDPolynomial {
         use vectorized_fields::*;
 
         let rayon_threads = rayon::current_num_threads();
-        let chunk_size = (n / rayon_threads / 8) + 1; // Non-zero + better work-stealing
+        let chunk_size = (n / rayon_threads / 16) + 2; // Non-zero + better work-stealing
+        let chunk_size = std::cmp::min(chunk_size, 512);
 
         let r = vec![r.clone(); chunk_size];
         left.par_chunks_mut(chunk_size)
@@ -59,7 +60,8 @@ impl CubicSumcheck for SIMDSumcheck {
         use vectorized_fields::*;
 
         let rayon_threads = rayon::current_num_threads();
-        let chunk_size = (n / rayon_threads / 8) + 1; // Non-zero + better work-stealing
+        let chunk_size = (n / rayon_threads / 32) + 2; // Non-zero + better work-stealing
+        let chunk_size = std::cmp::min(chunk_size, 512);
         let (eq_low, eq_high) = self.eq.Z.split_at(n);
         let (a_low, a_high) = self.a.Z.split_at(n);
         let (b_low, b_high) = self.b.Z.split_at(n);
@@ -85,7 +87,7 @@ impl CubicSumcheck for SIMDSumcheck {
                 sub_vec_bn254(eq_high, eq_low, &mut eq_m);
                 sub_vec_bn254(a_high, a_low, &mut a_m);
                 sub_vec_bn254(b_high, b_low, &mut b_m);
-                
+
                 // 2
                 let mut eq_2 = unsafe_alloc_vec(chunk_size);
                 let mut a_2 = unsafe_alloc_vec(chunk_size);
@@ -117,10 +119,12 @@ impl CubicSumcheck for SIMDSumcheck {
     fn bind_top(&mut self, r: &Fr) {
         rayon::join(
             || self.eq.bound_poly_var_top_par(r),
-            || rayon::join(
-                || self.a.bound_poly_var_top_par(r),
-                || self.b.bound_poly_var_top_par(r)
-            )
+            || {
+                rayon::join(
+                    || self.a.bound_poly_var_top_par(r),
+                    || self.b.bound_poly_var_top_par(r),
+                )
+            },
         );
     }
 }
