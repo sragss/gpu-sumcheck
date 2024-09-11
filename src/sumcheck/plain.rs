@@ -62,8 +62,8 @@ impl CubicSumcheck for PlainSumcheck {
     }
 
     fn bind_top(&mut self, r: &Fr) {
-        self.eq.bound_poly_var_top(r);
-        self.a.bound_poly_var_top(r);
-        self.b.bound_poly_var_top(r);
+        self.eq.bound_poly_var_top_par(r);
+        self.a.bound_poly_var_top_par(r);
+        self.b.bound_poly_var_top_par(r);
     }
 }

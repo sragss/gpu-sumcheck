@@ -1,20 +1,50 @@
 use crate::poly::plain::DensePolynomial;
 use crate::sumcheck::CubicSumcheck;
 use ark_bn254::Fr;
+use ark_ff::PrimeField;
 use ark_std::Zero;
 use rayon::prelude::*;
 
+pub struct SIMDPolynomial {
+    pub Z: Vec<Fr>,
+}
+
+impl SIMDPolynomial {
+    pub fn bound_poly_var_top_par(&mut self, r: &Fr) {
+        let n = self.Z.len() / 2;
+        let (left, right) = self.Z.split_at_mut(n);
+
+        use vectorized_fields::*;
+
+        let rayon_threads = rayon::current_num_threads();
+        let chunk_size = (n / rayon_threads / 8) + 1; // Non-zero + better work-stealing
+
+        let r = vec![r.clone(); chunk_size];
+        left.par_chunks_mut(chunk_size)
+            .zip(right.par_chunks_mut(chunk_size))
+            .for_each(|(left_chunk, right_chunk)| {
+                let chunk_size = left_chunk.len();
+
+                sub_vec_inplace_bn254(right_chunk, left_chunk);
+                mul_vec_inplace_bn254(right_chunk, &r[..chunk_size]);
+                add_vec_inplace_bn254(left_chunk, right_chunk);
+            });
+
+        self.Z.truncate(n);
+    }
+}
+
 pub struct SIMDSumcheck {
-    eq: DensePolynomial<Fr>,
-    a: DensePolynomial<Fr>,
-    b: DensePolynomial<Fr>,
+    eq: SIMDPolynomial,
+    a: SIMDPolynomial,
+    b: SIMDPolynomial,
 }
 
 impl CubicSumcheck for SIMDSumcheck {
     fn new(eq: Vec<Fr>, a: Vec<Fr>, b: Vec<Fr>) -> Self {
-        let eq = DensePolynomial::new(eq);
-        let a = DensePolynomial::new(a);
-        let b = DensePolynomial::new(b);
+        let eq = SIMDPolynomial { Z: eq };
+        let a = SIMDPolynomial { Z: a };
+        let b = SIMDPolynomial { Z: b };
 
         Self { eq, a, b }
     }
@@ -29,7 +59,7 @@ impl CubicSumcheck for SIMDSumcheck {
         use vectorized_fields::*;
 
         let rayon_threads = rayon::current_num_threads();
-        let chunk_size = (n / rayon_threads / 16) + 1; // Non-zero + better work-stealing
+        let chunk_size = (n / rayon_threads / 8) + 1; // Non-zero + better work-stealing
         let (eq_low, eq_high) = self.eq.Z.split_at(n);
         let (a_low, a_high) = self.a.Z.split_at(n);
         let (b_low, b_high) = self.b.Z.split_at(n);
@@ -67,14 +97,11 @@ impl CubicSumcheck for SIMDSumcheck {
                 let eval_2 = inner_product_bn254(&buff, &b_2);
 
                 // 3
-                let mut eq_3 = unsafe_alloc_vec(chunk_size);
-                let mut a_3 = unsafe_alloc_vec(chunk_size);
-                let mut b_3 = unsafe_alloc_vec(chunk_size);
-                add_vec_bn254(&eq_2, &eq_m, &mut eq_3);
-                add_vec_bn254(&a_2, &a_m, &mut a_3);
-                add_vec_bn254(&b_2, &b_m, &mut b_3);
-                mul_vec_bn254(&eq_3, &a_3, &mut buff);
-                let eval_3 = inner_product_bn254(&buff, &b_3);
+                add_vec_inplace_bn254(&mut eq_2, &eq_m);
+                add_vec_inplace_bn254(&mut a_2, &a_m);
+                add_vec_inplace_bn254(&mut b_2, &b_m);
+                mul_vec_inplace_bn254(&mut eq_2, &a_2);
+                let eval_3 = inner_product_bn254(&eq_2, &b_2);
 
                 (eval_0, eval_1, eval_2, eval_3)
             })
@@ -88,12 +115,17 @@ impl CubicSumcheck for SIMDSumcheck {
 
     #[tracing::instrument(skip_all)]
     fn bind_top(&mut self, r: &Fr) {
-        self.eq.bound_poly_var_top(r);
-        self.a.bound_poly_var_top(r);
-        self.b.bound_poly_var_top(r);
+        rayon::join(
+            || self.eq.bound_poly_var_top_par(r),
+            || rayon::join(
+                || self.a.bound_poly_var_top_par(r),
+                || self.b.bound_poly_var_top_par(r)
+            )
+        );
     }
 }
 
+#[tracing::instrument(skip_all)]
 pub fn unsafe_alloc_vec(size: usize) -> Vec<Fr> {
     let mut vec = Vec::with_capacity(size);
     unsafe {
